@@ -8,7 +8,7 @@ use framework "iTunesLibrary" -- clash with write_to_file
 on write_to_file(this_data, target_file, append_data) -- (string, file path as string, boolean)
 	try
 		set fileref to open for access target_file with write permission
-		set eof fileref to 0
+		if append_data is false then set eof fileref to 0
 		write this_data as «class utf8» to fileref
 		close access fileref
 		return true
@@ -21,15 +21,16 @@ on write_to_file(this_data, target_file, append_data) -- (string, file path as s
 end write_to_file
 
 -- set options :
-set theplaylist to "★★★★"
+set theplaylist to "★"
 set to_add_from_filename to "/Users/sylvann/Music/iSynciTunes/rsync_from.txt"
-set dest_folder_path to "/Volumes/Ah/Music/"
+set dest_folder_path to "/Volumes/Ah/"
+set dest_mufolder_path to dest_folder_path & "Music/"
 
 -- get all USB files and path
-set dest_paths to objects of dest_folder_path result type paths list with searching subfolders without include folders
+set dest_paths to objects of dest_mufolder_path result type paths list with searching subfolders without include folders
 
 -- compute lenght of \Music paths
-set dest_mu_path_len to ((count of (dest_folder_path as string))) + 1 -- (count ("Machintosh HD"))) + 1
+set dest_mu_path_len to ((count of (dest_mufolder_path as string))) + 1 -- (count ("Machintosh HD"))) + 1
 set lib to current application's ITLibrary's libraryWithAPIVersion:"1.0" |error|:(missing value)
 set itunes_mu_path to POSIX path of (lib's mediaFolderLocation as alias)
 set itune_mu_path_len to (count of ((itunes_mu_path & "Music") as string)) + 2
@@ -52,24 +53,31 @@ tell application "iTunes"
 	end repeat
 end tell
 
+
 -- check if track to add from playlist to destination folder
-set to_add_fromlist to {}
+set to_add_fromlist to {""}
+set to_add_m3u to {""}
 set saveTID to text item delimiters
 set text item delimiters to "/"
 tell application "System Events"
 	repeat with aTrack_loc in playlist_relpaths
 		if (aTrack_loc as string is not in dest_relpaths) then
-			# log ("NotOnExt:" & dest_folder_path & aTrack_loc)
+			# log ("NotOnExt:" & dest_mufolder_path & aTrack_loc)
 			# copy (itunes_mu_path & "Music" & aTrack_loc) to end of to_add_fromlist
 			copy (aTrack_loc as string) to end of to_add_fromlist
+			copy ("/Music/" & (aTrack_loc as string)) to end of to_add_m3u
 			# set splitTrackloc to split string aTrack_loc using delimiters "/"
 			# set parentTree to strings 1 through -2 of splitTrackloc
 			# set parentTree to parentTree as text
-			# copy (dest_folder_path & parentTree) to end of to_add_destlist
-			# do shell script ("mkdir -p " & quoted form of (dest_folder_path & parentTree))
+			# copy (dest_mufolder_path & parentTree) to end of to_add_destlist
+			# do shell script ("mkdir -p " & quoted form of (dest_mufolder_path & parentTree))
 		end if
 	end repeat
 end tell
+
+-- script to write playlist files
+my write_to_file("#EXTM3U\n", POSIX file (dest_folder_path & theplaylist & ".m3u") as Unicode text, true)
+my write_to_file(to_add_m3u, POSIX file (dest_folder_path & theplaylist & ".m3u") as Unicode text, true)
 
 set AppleScript's text item delimiters to "\n"
 set to_add_fromlist to to_add_fromlist as text
@@ -79,21 +87,21 @@ my write_to_file(to_add_fromlist, POSIX file to_add_from_filename as Unicode tex
 set text item delimiters to saveTID
 
 -- launch rsync to syncronise files on destination folder
-set rsync_shell_command to "rsync -a --stats --inplace --fuzzy --relative --delete-after --files-from=" & (to_add_from_filename) & " " & quoted form of (itunes_mu_path & "Music/") & " " & (dest_folder_path)
+set rsync_shell_command to "rsync -a --stats --inplace --fuzzy --relative --delete-after --files-from=" & (to_add_from_filename) & " " & quoted form of (itunes_mu_path & "Music/") & " " & (dest_mufolder_path)
 do shell script rsync_shell_command
 
 -- check if track to delete from destination folder
 tell application "System Events"
 	repeat with anExt_file_loc in dest_relpaths
 		if (anExt_file_loc as string is not in playlist_relpaths) then
-			log ("not in playlist:" & dest_folder_path & anExt_file_loc)
-			delete alias (dest_folder_path & anExt_file_loc)
+			# log ("not in playlist:" & dest_mufolder_path & anExt_file_loc)
+			delete alias (dest_mufolder_path & anExt_file_loc)
 		end if
 	end repeat
 end tell
 
 --script to find empty folders and delete them on destination folder
 tell application "System Events"
-	# set posixPath to quoted form of POSIX path of dest_folder_path
-	do shell script "find " & dest_folder_path & " -name '.DS_Store' -type f -delete && find " & dest_folder_path & " -empty -type d -delete"
+	# set posixPath to quoted form of POSIX path of dest_mufolder_path
+	do shell script "find " & dest_mufolder_path & " -name '.DS_Store' -type f -delete && find " & dest_folder_path & " -empty -type d -delete"
 end tell
